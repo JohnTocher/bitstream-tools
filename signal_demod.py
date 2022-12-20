@@ -11,11 +11,8 @@
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-DATA_PATH = "D:/Sync/HomeSyn/ATC/STIU/MVT/Radio_DeMod"
-# DATA_FILE = "excerpt_01.complex16"  # 92630 samples
-DATA_FILE = "single press.complex16u"  # 92630 samples
-# DATA_FILE = "sample_30_ask.complex16u"  # 30 samples
-
+DATA_PATH = Path(__file__).parent
+DATA_FILE = "sample_40_bits_01.complex16u"  # 92630 samples
 
 def raw_read(raw_file_name):
     """Reads the supplied file and spits out data for exploration"""
