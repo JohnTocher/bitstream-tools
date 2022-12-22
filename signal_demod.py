@@ -100,6 +100,7 @@ def extract_bit_stream(gated_data, sample_divisor=500, print_verbose=False):
 
     raw_count = len(gated_data)
     min_width = int(raw_count / sample_divisor)
+    # print(f"Trying min width: {min_width}")
 
     running_high = 0
     running_low = 0
@@ -151,7 +152,16 @@ def extract_bit_stream(gated_data, sample_divisor=500, print_verbose=False):
     if fall_count == rise_count:
         return peak_list
     else:
-        return 0
+        edge_diff = int(rise_count - fall_count)
+        if edge_diff > 1:
+            print(gated_data)
+            assert False, f"Unexpected edge mismatch: {fall_count} != {rise_count}"
+        else:
+            if rise_count:
+                return peak_list
+            else:
+                assert False, f"No edges detected: {fall_count} != {rise_count}"
+    return 0
 
 
 def count_bitstream_transistions(bitstream_list, what_to_count):
@@ -182,6 +192,8 @@ def try_bit_streams(gated_data, print_verbose=False):
     trial_result = dict()
     summary_dict = dict()
     result_list = list()
+
+    size_of_data = len(gated_data)
 
     for pulse_width_min in range(100, 1250, 50):
         timing_list = extract_bit_stream(gated_data, pulse_width_min, False)
