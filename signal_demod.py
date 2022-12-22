@@ -3,6 +3,8 @@
     If you want the plots, you'll need to install matplotlib:
     python -m pip install -U matplotlib
 
+    Run this program to do analysis on the data file
+
     John Tocher
     20/12/2022
 
@@ -11,10 +13,14 @@
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-DATA_PATH = Path(__file__).parent
-DATA_FILE = "sample_40_bits_01.complex16u"  # 92630 samples
+DATA_PATH = Path(__file__).parent / "sample_data"
 
-def raw_read(raw_file_name):
+DATA_SAMPLE_1 = "sample_40_bits_01.complex16u"  # 92630 samples
+DATA_SAMPLE_2 = "sample_40_bits_02.complex16u"  # 92630 samples
+DATA_SAMPLE_3 = "sample_40_bits_03.complex16u"  # 92630 samples
+
+
+def raw_read(raw_file_name, print_verbose=False):
     """Reads the supplied file and spits out data for exploration"""
 
     chunk_count = 0
@@ -47,7 +53,10 @@ def raw_read(raw_file_name):
             else:
                 chunk_count -= 1
 
-    print(f"Read {chunk_count} chunks of size {chunk_size} from file {raw_file_name}")
+    if print_verbose:
+        print(
+            f"Read {chunk_count} chunks of size {chunk_size} from file {raw_file_name}"
+        )
 
     return raw_data
 
@@ -140,9 +149,27 @@ def extract_bit_stream(gated_data, sample_divisor=500, print_verbose=False):
         print(f"Rise count:{rise_count} Fall count:{fall_count}")
 
     if fall_count == rise_count:
-        return fall_count, peak_list
+        return peak_list
     else:
         return 0
+
+
+def count_bitstream_transistions(bitstream_list, what_to_count):
+    """Returns the instanaces of an event such as "L-H from the supplied bitstream list
+
+    the list items are lists themselves, [being event, sample_position] so a single positive
+    pulse might look like:
+    [ ["L-H", 125], ["L-H", 150] ]
+
+    for a H-L transition at sample 125 , then the transition down at sample 150, 25 samples later
+    """
+
+    event_count = 0
+    for each_transition in bitstream_list:
+        if what_to_count in each_transition[0]:
+            event_count += 1
+
+    return event_count
 
 
 def try_bit_streams(gated_data, print_verbose=False):
@@ -157,9 +184,8 @@ def try_bit_streams(gated_data, print_verbose=False):
     result_list = list()
 
     for pulse_width_min in range(100, 1250, 50):
-        this_attempt, _timing_list = extract_bit_stream(
-            gated_data, pulse_width_min, False
-        )
+        timing_list = extract_bit_stream(gated_data, pulse_width_min, False)
+        this_attempt = count_bitstream_transistions(timing_list, "H-L")
         result_list.append(this_attempt)
         new_value = summary_dict.get(this_attempt, 0) + 1
         summary_dict[this_attempt] = new_value
@@ -187,9 +213,10 @@ def try_bit_streams(gated_data, print_verbose=False):
             sample_sum += each_key
 
     avg_divisor = int(sample_sum / highest_frequency)
-    print(
-        f"Will use a sample divisor of {avg_divisor} ({highest_frequency} of 12 match)"
-    )
+    if print_verbose:
+        print(
+            f"Will use a sample divisor of {avg_divisor} ({highest_frequency} of 12 match)"
+        )
 
     return avg_divisor
 
@@ -233,7 +260,8 @@ def calc_bit_values(timing_list, print_verbose=False):
 
     avg_width = int(width_total / num_lows)
 
-    print(f"Average width: {avg_width}")
+    if print_verbose:
+        print(f"Average width: {avg_width}")
 
     pulse_count = 0
     for each_pulse in low_widths:
@@ -262,25 +290,74 @@ def calc_bit_values(timing_list, print_verbose=False):
     return bits_list, bits_text
 
 
-def run_demod():
-    """Run main algorithm"""
+def get_bits_for_data_file(data_file_name, return_as_text=False, print_verbose=False):
+    """Returns the demodulated bitstream for the supplied data file
 
-    source_file_name = Path(DATA_PATH) / DATA_FILE
-    raw_data = raw_read(source_file_name)
-    gated_data = auto_scale_and_gate(raw_data, show_plot=True)
+    Returns a list of booleans: [True, False, False.....True]
+    or a text representation : "11000.....1"
+    depending on the value of return_as_text
+    """
+
+    raw_data = raw_read(data_file_name)
+    gated_data = auto_scale_and_gate(raw_data, show_plot=False)
 
     count_high = gated_data.count(True)
     count_total = len(gated_data)
     duty_cycle = int(count_high / count_total * 100)
 
-    print(f"Data has {count_high} highs in {count_total} samples (~ {duty_cycle} %)")
+    if print_verbose:
+        print(
+            f"Data has {count_high} highs in {count_total} samples (~ {duty_cycle} %)"
+        )
 
     opt_divisor = try_bit_streams(gated_data, print_verbose=False)
-    bit_stream, timing_list = extract_bit_stream(
-        gated_data, opt_divisor, print_verbose=False
-    )
+    timing_list = extract_bit_stream(gated_data, opt_divisor, print_verbose=False)
     bit_values, bit_text = calc_bit_values(timing_list, print_verbose=False)
-    print(f"Bit values ({len(bit_values)}):\n{bit_text}")
+
+    if print_verbose:
+        print(f"Bit values ({len(bit_values)}):\n{bit_text}")
+
+    if return_as_text:
+        return bit_text
+    else:
+        return bit_values
+
+
+def compare_multiple_files(data_file_list):
+    """Do a simple comparison for multiple data_files"""
+
+    result_list = list()
+    result_set = set()
+
+    for each_file in data_file_list:
+        bit_text = get_bits_for_data_file(
+            each_file, return_as_text=True, print_verbose=False
+        )
+        result_list.append(bit_text)
+        print(f"{each_file.name} : {bit_text}")
+
+    for result in result_list:
+        result_set.add(result)
+
+    print(f"Found {len(result_set)} unique streams from {len(result_list)} data files")
+
+    return result_list
+
+
+def run_demod():
+    """Run main algorithm"""
+
+    # Example for a single file
+    source_file_name = Path(DATA_PATH) / DATA_SAMPLE_1
+    bit_text = get_bits_for_data_file(source_file_name, True, False)
+    print(f"Bit values ({len(bit_text)}):\n{bit_text}")
+
+    # Example to compare multiple files
+    data_file_list = list()
+    data_file_list.append(Path(DATA_PATH) / DATA_SAMPLE_1)
+    data_file_list.append(Path(DATA_PATH) / DATA_SAMPLE_2)
+    data_file_list.append(Path(DATA_PATH) / DATA_SAMPLE_3)
+    result_list = compare_multiple_files(data_file_list)
 
 
 if __name__ == "__main__":
